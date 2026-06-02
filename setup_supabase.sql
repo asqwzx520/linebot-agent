@@ -3,9 +3,10 @@
 -- 在 Supabase Dashboard → SQL Editor 執行此檔案
 -- ============================================================
 
--- 長期記憶表
+-- 長期記憶表（含 user_id 隔離）
 CREATE TABLE IF NOT EXISTS memories (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    TEXT        NOT NULL DEFAULT 'default',
     category   TEXT        NOT NULL DEFAULT 'general',
     content    TEXT        NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -21,15 +22,15 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 -- 索引（加速查詢）
-CREATE INDEX IF NOT EXISTS idx_memories_created   ON memories(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_memories_category  ON memories(category);
+CREATE INDEX IF NOT EXISTS idx_memories_user      ON memories(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_category  ON memories(user_id, category);
 CREATE INDEX IF NOT EXISTS idx_conv_user_time     ON conversations(user_id, created_at DESC);
 
--- 啟用 Row Level Security（建議開啟）
+-- 啟用 Row Level Security
 ALTER TABLE memories      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 
--- 允許所有人完整存取（anon key 可讀寫）
+-- 建立存取政策
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -44,6 +45,20 @@ BEGIN
     ) THEN
         CREATE POLICY "allow_all_conversations"
             ON conversations FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+END $$;
+
+-- ============================================================
+-- 若 memories 表已存在但缺少 user_id 欄位（升級用）
+-- ============================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'memories' AND column_name = 'user_id'
+    ) THEN
+        ALTER TABLE memories ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default';
+        CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id, created_at DESC);
     END IF;
 END $$;
 

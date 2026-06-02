@@ -1,3 +1,8 @@
+"""
+長期記憶 + 對話歷史
+記憶依 user_id 完全隔離，每個用戶只看到自己的記憶。
+"""
+
 from supabase import create_client
 from app.config import SUPABASE_URL, SUPABASE_ANON_KEY
 
@@ -10,25 +15,29 @@ def _get_client():
     return _client
 
 
-def save_memory(category: str, content: str) -> str:
-    """儲存一筆記憶到資料庫。"""
+# ── 長期記憶（依 user_id 隔離）────────────────────────────────────────────
+
+def save_memory(user_id: str, category: str, content: str) -> str:
+    """儲存一筆記憶到資料庫（屬於該用戶）。"""
     try:
         _get_client().table("memories").insert({
+            "user_id":  user_id,
             "category": category,
-            "content": content,
+            "content":  content,
         }).execute()
         return f"✅ 記憶已儲存：[{category}] {content}"
     except Exception as e:
         return f"❌ 儲存失敗：{e}"
 
 
-def recall_memories(limit: int = 8) -> list[str]:
-    """從資料庫讀取最近的記憶。"""
+def recall_memories(user_id: str, limit: int = 8) -> list[str]:
+    """從資料庫讀取該用戶的最近記憶。"""
     try:
         result = (
             _get_client()
             .table("memories")
             .select("category, content")
+            .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(limit)
             .execute()
@@ -38,13 +47,14 @@ def recall_memories(limit: int = 8) -> list[str]:
         return []
 
 
-def delete_memory(keyword: str) -> str:
-    """刪除包含關鍵字的記憶。"""
+def delete_memory(user_id: str, keyword: str) -> str:
+    """刪除該用戶包含關鍵字的記憶。"""
     try:
         result = (
             _get_client()
             .table("memories")
             .delete()
+            .eq("user_id", user_id)
             .ilike("content", f"%{keyword}%")
             .execute()
         )
@@ -54,13 +64,15 @@ def delete_memory(keyword: str) -> str:
         return f"❌ 刪除失敗：{e}"
 
 
+# ── 對話歷史（本來就依 user_id 隔離）──────────────────────────────────────
+
 def save_conversation(user_id: str, role: str, content: str) -> None:
-    """儲存對話紀錄（非同步、失敗不影響主流程）。"""
+    """儲存對話紀錄（失敗不影響主流程）。"""
     try:
         _get_client().table("conversations").insert({
             "user_id": user_id,
-            "role": role,
-            "content": content[:2000],  # 限制長度
+            "role":    role,
+            "content": content[:2000],
         }).execute()
     except Exception:
         pass
