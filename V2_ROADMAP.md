@@ -14,11 +14,16 @@
 | 網路搜尋 | ✅ 上線 | DuckDuckGo，無需 API Key |
 | 長期記憶 | ✅ 上線 | Supabase 永久儲存，user_id 隔離 |
 | 圖片分析 | ✅ 上線 | Gemini Vision 多模態 |
-| PDF 分析 | ✅ 上線 | pypdf 解析，最多 20 頁 |
+| PDF 分析 | ✅ 上線 | pypdf 解析，最多 20 頁，超過自動截斷 |
 | AI 生圖 | ✅ 上線 | Pollinations FLUX → HF SDXL → Turbo 降級鏈 |
-| 多模型備用 | ✅ 上線 | 3.5-flash → 3.1-flash → 3.1-flash-lite |
+| 多模型備用 | ✅ 上線 | Gemini 3.x 模型鏈：3.5-flash → 3.1-flash → 3.1-flash-lite |
 | 多 API Key | ✅ 上線 | 最多 3 個帳號各自額度 |
-| 多用戶隔離 | ✅ 上線 | 每人記憶完全分開 |
+| 多用戶隔離 | ✅ 上線 | 每人記憶完全分開，user_id 索引 |
+| 多用戶記憶隔離 | ✅ 完成（V1）| 記憶以 user_id 嚴格隔離，跨用戶不可見 |
+| 速率限制 | ✅ 完成（V1）| 每用戶每分鐘 10 則，防濫用 |
+| Service Role Key 安全性 | ✅ 完成（V1）| 使用 service_role key 存取 DB，移除 allow_all RLS policy |
+| Prompt Injection 防護 | ✅ 完成（V1）| 過濾惡意 prompt，保護系統指令不被覆寫 |
+| 圖片檔名隨機化 | ✅ 完成（V1）| 上傳圖片使用 UUID 檔名，防止枚舉存取 |
 | 雲端部署 | ✅ 上線 | Render.com Docker，GitHub 自動部署 |
 
 ---
@@ -334,7 +339,7 @@ Phase 3（長期，1-2 月）
 | 管理面板 | 查看用戶數、訊息量、記憶使用量 | 🟢 低 |
 | 對話匯出 | 用戶可匯出自己的對話記錄 | 🟢 低 |
 | 記憶容量限制 | 防止單一用戶儲存過多記憶 | 🟡 中 |
-| 速率限制 | 防止單一用戶短時間大量請求 | 🟡 中 |
+| 速率限制 | ✅ 已完成（V1）每用戶每分鐘 10 則 | ~~🟡 中~~ |
 
 ---
 

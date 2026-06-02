@@ -54,6 +54,8 @@
 3. 點左側「**Get API key**」→「**Create API key**」
 4. 複製 API Key ✏️
 
+> ℹ️ 本專案使用 **Gemini 3.5 Flash** 作為主力模型，搭配 3.1-flash / 3.1-flash-lite 作為備用降級鏈。
+
 ---
 
 ## 🗄️ Step 4：建立 Supabase 資料庫
@@ -70,6 +72,7 @@
 1. 點左側齒輪「**Project Settings**」→「**API**」
 2. 複製「**Project URL**」（形如 `https://xxxx.supabase.co`）✏️
 3. 複製「**anon / public**」key ✏️
+4. 複製「**service_role**」key ✏️（在同一頁面，請妥善保管，勿公開）
 
 ### 4.3 建立資料表
 1. 點左側「**SQL Editor**」
@@ -77,6 +80,13 @@
 3. 打開資料夾 `C:\Users\User\Desktop\ClaudeProject\LINEBOT\setup_supabase.sql`
 4. 全選複製內容 → 貼到 SQL Editor
 5. 點右上角「**Run**」→ 看到 Success ✅
+
+> ⚠️ **安全注意事項：** 如果你之前曾設定過「allow_all」的 RLS（Row Level Security）policy，請務必將其 **DROP 掉**，改用 service_role key 存取資料庫。保留 allow_all policy 會讓任何人都能讀寫你的資料。執行以下 SQL 刪除舊的開放 policy：
+> ```sql
+> DROP POLICY IF EXISTS "allow_all" ON memories;
+> DROP POLICY IF EXISTS "allow_all" ON conversations;
+> ```
+> 本專案透過後端的 `SUPABASE_SERVICE_ROLE_KEY` 繞過 RLS，因此不需要開放 policy。
 
 ### 4.4 建立圖片儲存空間
 1. 點左側「**Storage**」
@@ -142,6 +152,9 @@ git push -u origin master
 | `GEMINI_API_KEY` | 你的 Gemini API Key |
 | `SUPABASE_URL` | 你的 Supabase Project URL |
 | `SUPABASE_ANON_KEY` | 你的 Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | 你的 Supabase service_role key（Step 4.2 取得）|
+
+> ⚠️ `SUPABASE_SERVICE_ROLE_KEY` 具有完整資料庫存取權限，請勿提交到 GitHub。只在 Render 環境變數中設定。
 
 ### 6.4 部署
 1. 點「**Create Web Service**」
@@ -182,6 +195,26 @@ git push -u origin master
 （傳一張圖片）              → 圖片分析
 （傳一份 PDF）             → 文件分析
 ```
+
+---
+
+## 👥 多用戶支援說明
+
+本 Bot 支援多位用戶同時使用，每位用戶的記憶**完全隔離**：
+
+- 記憶、對話記錄以 LINE 的 `user_id` 為索引儲存在 Supabase
+- 用戶 A 的記憶不會洩漏給用戶 B
+- 無需任何額外設定，多用戶隔離預設啟用
+
+---
+
+## 🛡️ 速率限制
+
+為防止濫用，每位用戶的請求頻率有以下限制：
+
+- **上限：每分鐘 10 則訊息**（per user）
+- 超過限制時，Bot 會回覆提示訊息，請稍後再試
+- 限制以 LINE `user_id` 為單位，不同用戶互不影響
 
 ---
 
