@@ -9,7 +9,7 @@ import urllib.parse
 import httpx
 import time
 
-from app.config import HF_TOKEN, SUPABASE_URL, SUPABASE_ANON_KEY
+from app.config import HF_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
 
 TIMEOUT = 60  # seconds
 
@@ -77,12 +77,14 @@ def _try_pollinations_turbo(prompt: str) -> str | None:
 
 def _upload_to_supabase(image_bytes: bytes) -> str | None:
     """上傳圖片到 Supabase Storage，回傳公開 URL。"""
-    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
+    if not SUPABASE_URL or not key:
         return None
     try:
         from supabase import create_client
-        client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        filename = f"gen_{int(time.time() * 1000)}.jpg"
+        import uuid
+        client = create_client(SUPABASE_URL, key)
+        filename = f"gen_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}.jpg"
         client.storage.from_("images").upload(
             filename, image_bytes, {"content-type": "image/jpeg"}
         )

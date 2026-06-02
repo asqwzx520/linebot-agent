@@ -6,7 +6,8 @@ load_dotenv()
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_CHANNEL_SECRET       = os.getenv("LINE_CHANNEL_SECRET", "")
 SUPABASE_URL              = os.getenv("SUPABASE_URL", "")
-SUPABASE_ANON_KEY         = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_ANON_KEY         = os.getenv("SUPABASE_ANON_KEY", "")       # 前端公開用（不給後端用）
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") # 後端專用，完整存取權限
 HF_TOKEN                  = os.getenv("HF_TOKEN", "")
 PORT                      = int(os.getenv("PORT", "8000"))
 

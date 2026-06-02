@@ -4,6 +4,8 @@ LINE Webhook 事件處理器。
 """
 
 import asyncio
+import logging
+
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
@@ -22,8 +24,13 @@ from linebot.v3.messaging import (
 )
 from app.config import LINE_CHANNEL_ACCESS_TOKEN
 from app.gemini_agent import process_text, process_image, process_pdf
+from app.rate_limiter import is_rate_limited
+
+logger = logging.getLogger(__name__)
 
 _line_config = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
+
+MAX_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 def _send_reply(reply_token: str, messages: list) -> None:
@@ -48,12 +55,13 @@ async def handle_line_events(events: list) -> None:
         try:
             await _dispatch(event)
         except Exception as e:
-            # 嘗試回覆錯誤訊息
+            # 只記錄日誌，回覆通用訊息（不洩漏技術細節）
+            logger.error("Event dispatch error: %s", e, exc_info=True)
             if hasattr(event, "reply_token"):
                 try:
                     _send_reply(
                         event.reply_token,
-                        [TextMessage(text=f"處理時發生錯誤，請再試一次。\n({type(e).__name__}: {e})")],
+                        [TextMessage(text="處理時發生錯誤，請稍後再試。")],
                     )
                 except Exception:
                     pass
@@ -85,8 +93,15 @@ async def _dispatch(event) -> None:
         return
 
     reply_token = event.reply_token
-    user_id = event.source.user_id
-    msg = event.message
+    user_id     = event.source.user_id
+    msg         = event.message
+
+    # ── 速率限制 ─────────────────────────────────────────────────────────────
+    if is_rate_limited(user_id):
+        _send_reply(reply_token, [TextMessage(
+            text="⚠️ 請求太頻繁，請稍後再試（每分鐘最多 10 則）。"
+        )])
+        return
 
     # ── 文字訊息 ─────────────────────────────────────────────────────────────
     if isinstance(msg, TextMessageContent):
@@ -95,7 +110,6 @@ async def _dispatch(event) -> None:
         )
         messages = []
         if reply_text:
-            # LINE 單則訊息最多 5000 字
             for chunk in _chunk_text(reply_text, 4500):
                 messages.append(TextMessage(text=chunk))
         if image_url:
@@ -108,7 +122,7 @@ async def _dispatch(event) -> None:
     # ── 圖片訊息 ─────────────────────────────────────────────────────────────
     elif isinstance(msg, ImageMessageContent):
         image_bytes = await loop.run_in_executor(None, _download_content, msg.id)
-        reply_text = await loop.run_in_executor(
+        reply_text  = await loop.run_in_executor(
             None, process_image, user_id, image_bytes, ""
         )
         _send_reply(reply_token, [TextMessage(text=reply_text[:4500])])
@@ -118,6 +132,12 @@ async def _dispatch(event) -> None:
         filename = msg.file_name
         if filename.lower().endswith(".pdf"):
             file_bytes = await loop.run_in_executor(None, _download_content, msg.id)
+            # 檔案大小限制
+            if len(file_bytes) > MAX_PDF_SIZE:
+                _send_reply(reply_token, [TextMessage(
+                    text="PDF 檔案過大，請上傳 10MB 以內的檔案。"
+                )])
+                return
             reply_text = await loop.run_in_executor(
                 None, process_pdf, user_id, file_bytes, filename
             )

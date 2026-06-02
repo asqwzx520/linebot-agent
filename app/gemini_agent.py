@@ -89,6 +89,12 @@ def _make_tools(user_id: str):
         Returns:
             確認訊息
         """
+        # 防 Prompt Injection：限制長度、限制分類
+        content  = content[:500].strip()
+        category = category[:50].strip()
+        allowed  = {"preference", "project", "note", "personal", "general"}
+        if category not in allowed:
+            category = "note"
         return save_memory(user_id, category, content)
 
     def memory_recall(keyword: str = "") -> str:
@@ -193,10 +199,12 @@ def process_text(user_id: str, text: str) -> tuple[str, str | None]:
     gemini_history = _history_to_gemini(history)
 
     # 加入該用戶的記憶作為背景 context
+    # 使用 XML 標記結構化分隔，降低 Prompt Injection 風險
     memories = recall_memories(user_id, limit=5)
     if memories:
-        mem_text = "（你對我說過的事：" + "；".join(memories) + "）\n\n"
-        full_input = mem_text + text
+        mem_items = "\n".join(f"  <item>{m}</item>" for m in memories)
+        mem_block = f"<user_memories>\n{mem_items}\n</user_memories>\n\n"
+        full_input = mem_block + text
     else:
         full_input = text
 

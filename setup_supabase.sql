@@ -30,23 +30,13 @@ CREATE INDEX IF NOT EXISTS idx_conv_user_time     ON conversations(user_id, crea
 ALTER TABLE memories      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 
--- 建立存取政策
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'memories' AND policyname = 'allow_all_memories'
-    ) THEN
-        CREATE POLICY "allow_all_memories"
-            ON memories FOR ALL USING (true) WITH CHECK (true);
-    END IF;
+-- ⚠️  移除舊的「開放給所有人」政策（若存在）
+DROP POLICY IF EXISTS "allow_all_memories"      ON memories;
+DROP POLICY IF EXISTS "allow_all_conversations" ON conversations;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'conversations' AND policyname = 'allow_all_conversations'
-    ) THEN
-        CREATE POLICY "allow_all_conversations"
-            ON conversations FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-END $$;
+-- 後端使用 service_role key 直接繞過 RLS，不需要任何 policy。
+-- 不建立任何 anon policy → RLS 預設拒絕所有匿名請求。
+-- 效果：持有 anon key 的外部呼叫者無法讀寫任何資料。
 
 -- ============================================================
 -- 若 memories 表已存在但缺少 user_id 欄位（升級用）

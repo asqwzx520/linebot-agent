@@ -4,14 +4,17 @@
 """
 
 from supabase import create_client
-from app.config import SUPABASE_URL, SUPABASE_ANON_KEY
+from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
 
 _client = None
 
 def _get_client():
     global _client
     if _client is None:
-        _client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        # 優先使用 service_role key（完整存取，繞過 RLS）
+        # 若未設定則降回 anon key（舊相容）
+        key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY
+        _client = create_client(SUPABASE_URL, key)
     return _client
 
 
