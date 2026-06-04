@@ -29,6 +29,10 @@ from app.memory import (
 from app.search import search_web as _search_web
 from app.image_gen import generate_image as _generate_image
 
+# 影片生成待辦佇列（user_id → prompt）
+# process_text 把影片請求存在這裡，line_handler 取走後啟動背景任務
+_pending_video_jobs: dict[str, str] = {}
+
 # ── 模型優先順序（品質高 → 低，但額度高 → 高）────────────────────────────
 MODEL_CHAIN = [
     "gemini-3.5-flash",
@@ -44,6 +48,7 @@ SYSTEM_PROMPT = """你是一個智慧、友善的個人 AI 助理，透過 LINE 
 3. 儲存與回憶長期記憶（每位用戶的記憶完全分開）
 4. 生成圖片
 5. 分析 Excel / CSV 數據（用戶上傳後自動解析並提供洞察）
+6. 生成 AI 影片（需 1-3 分鐘，完成後主動推播）
 
 【工具使用時機】
 - 問到時事/最新資料 → web_search
@@ -55,6 +60,12 @@ SYSTEM_PROMPT = """你是一個智慧、友善的個人 AI 助理，透過 LINE 
 【生圖規則】
 - prompt 必須用英文（品質更好）
 - 成功時回覆：IMAGE_URL:<url>（系統會自動轉成圖片訊息）
+
+【生成影片規則】
+- 使用者說「生成影片」「幫我做一個影片」「影片」等 → video_generate
+- prompt 必須用英文（品質更好）
+- 影片需要 1-3 分鐘，系統會自動在完成後推播給用戶
+- 告知用戶「正在生成，完成後會直接傳給你」
 
 【語言】
 - 預設繁體中文
@@ -137,7 +148,19 @@ def _make_tools(user_id: str):
             return result
         return f"IMAGE_URL:{result}"
 
-    return [web_search, memory_save, memory_recall, memory_delete, image_generate]
+    def video_generate(prompt: str) -> str:
+        """生成 AI 影片（需 1-3 分鐘）。使用者要求生成影片時使用。prompt 請用英文。
+
+        Args:
+            prompt: 影片描述（英文），例如 'ocean waves crashing on rocky shore at sunset'
+        Returns:
+            確認訊息（影片在背景生成，完成後自動推播）
+        """
+        # 存入待辦佇列，line_handler 會取走並啟動背景任務
+        _pending_video_jobs[user_id] = prompt[:500].strip()
+        return "VIDEO_QUEUED"  # 特殊標記，由 line_handler 處理
+
+    return [web_search, memory_save, memory_recall, memory_delete, image_generate, video_generate]
 
 
 # ── 模型降級鏈核心 ────────────────────────────────────────────────────────
@@ -190,10 +213,10 @@ def _history_to_gemini(history: list[dict]) -> list[dict]:
 
 # ── 主處理函數 ────────────────────────────────────────────────────────────
 
-def process_text(user_id: str, text: str) -> tuple[str, str | None]:
+def process_text(user_id: str, text: str) -> tuple[str, str | None, str | None]:
     """
     處理文字訊息。
-    回傳 (reply_text, image_url_or_None)
+    回傳 (reply_text, image_url_or_None, video_prompt_or_None)
     """
     # 載入近期對話歷史
     history = get_recent_conversations(user_id, limit=6)
@@ -215,7 +238,7 @@ def process_text(user_id: str, text: str) -> tuple[str, str | None]:
     save_conversation(user_id, "user", text)
     save_conversation(user_id, "assistant", reply)
 
-    # 解析圖片 URL
+    # ── 解析圖片 URL ────────────────────────────────────────────────────────
     image_url = None
     if "IMAGE_URL:" in reply:
         lines = reply.splitlines()
@@ -229,7 +252,16 @@ def process_text(user_id: str, text: str) -> tuple[str, str | None]:
         image_url = found_url
         reply = "\n".join(kept).strip() or "圖片已生成！"
 
-    return reply, image_url
+    # ── 解析影片待辦 ────────────────────────────────────────────────────────
+    video_prompt = _pending_video_jobs.pop(user_id, None)
+
+    # 若 Gemini 把 VIDEO_QUEUED 寫進回覆文字，清除它
+    if video_prompt and "VIDEO_QUEUED" in reply:
+        reply = reply.replace("VIDEO_QUEUED", "").strip()
+        if not reply:
+            reply = "🎬 影片生成中，約需 1-3 分鐘，完成後會直接傳給你！"
+
+    return reply, image_url, video_prompt
 
 
 def process_image(user_id: str, image_bytes: bytes, caption: str = "") -> str:

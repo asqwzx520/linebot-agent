@@ -65,7 +65,7 @@ ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 -- 後端使用 service_role key，不需額外 policy
 
 -- ============================================================
--- 完成！接著到 Supabase → Storage 建立 bucket：
---   名稱：images
---   Public：✅ 開啟
+-- 完成！接著到 Supabase → Storage 建立兩個 bucket：
+--   1. 名稱：images  Public：✅ 開啟（圖片生成使用）
+--   2. 名稱：videos  Public：✅ 開啟（AI 影片生成使用）
 -- ============================================================

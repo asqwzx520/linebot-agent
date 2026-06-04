@@ -9,6 +9,8 @@ SUPABASE_URL              = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY         = os.getenv("SUPABASE_ANON_KEY", "")       # 前端公開用（不給後端用）
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") # 後端專用，完整存取權限
 HF_TOKEN                  = os.getenv("HF_TOKEN", "")
+KLING_API_KEY             = os.getenv("KLING_API_KEY", "")      # Kling AI 影片生成（選用）
+KLING_API_SECRET          = os.getenv("KLING_API_SECRET", "")   # Kling AI Secret（選用）
 PORT                      = int(os.getenv("PORT", "8000"))
 
 # ── 多個 Gemini API Key（不同 Google 帳號 = 各自獨立額度）──────────────────

@@ -5,6 +5,7 @@ LINE Webhook 事件處理器。
 
 import asyncio
 import logging
+from app.video_gen import generate_and_push as _video_generate_and_push
 
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -117,7 +118,7 @@ async def _dispatch(event) -> None:
             _send_reply(reply_token, [TextMessage(text=cmd_reply[:4500])])
             return
 
-        reply_text, image_url = await loop.run_in_executor(
+        reply_text, image_url, video_prompt = await loop.run_in_executor(
             None, process_text, user_id, msg.text
         )
         messages = []
@@ -130,6 +131,10 @@ async def _dispatch(event) -> None:
                 preview_image_url=image_url,
             ))
         _send_reply(reply_token, messages or [TextMessage(text="（空回覆）")])
+
+        # 影片生成：reply 已送出後，背景啟動（不阻塞 Webhook）
+        if video_prompt:
+            asyncio.create_task(_video_generate_and_push(user_id, video_prompt))
 
     # ── 圖片訊息 ─────────────────────────────────────────────────────────────
     elif isinstance(msg, ImageMessageContent):
