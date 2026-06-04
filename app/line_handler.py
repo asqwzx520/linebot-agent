@@ -25,6 +25,10 @@ from linebot.v3.messaging import (
 from app.config import LINE_CHANNEL_ACCESS_TOKEN
 from app.gemini_agent import process_text, process_image, process_pdf, process_excel
 from app.rate_limiter import is_rate_limited
+from app.memory import (
+    get_memory_status, export_conversations, clear_conversations,
+    format_settings_display, set_user_language,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +111,12 @@ async def _dispatch(event) -> None:
 
     # ── 文字訊息 ─────────────────────────────────────────────────────────────
     if isinstance(msg, TextMessageContent):
+        # 內建指令（不消耗 Gemini 額度）
+        cmd_reply = _handle_command(user_id, msg.text.strip())
+        if cmd_reply is not None:
+            _send_reply(reply_token, [TextMessage(text=cmd_reply[:4500])])
+            return
+
         reply_text, image_url = await loop.run_in_executor(
             None, process_text, user_id, msg.text
         )
@@ -172,6 +182,55 @@ async def _dispatch(event) -> None:
         _send_reply(reply_token, [TextMessage(
             text="目前支援：文字、圖片、PDF、Excel（.xlsx/.xls）、CSV。"
         )])
+
+
+def _handle_command(user_id: str, text: str) -> str | None:
+    """
+    處理內建斜線指令。
+    回傳回覆文字；若不是指令則回傳 None。
+    """
+    lower = text.lower()
+
+    # ── /說明 / /help ───────────────────────────────────────────────────────
+    if lower in ("/說明", "/help", "/指令"):
+        return (
+            "📖 可用指令\n"
+            "─────────────\n"
+            "⚙️  設定\n"
+            "  /設定 — 查看目前設定\n"
+            "  /設定 語言 中文\n"
+            "  /設定 語言 英文\n\n"
+            "🧠  記憶\n"
+            "  /記憶 — 查看記憶使用量\n\n"
+            "💬  對話\n"
+            "  /匯出 — 匯出最近 100 則對話\n"
+            "  /清除對話 — 清空對話歷史\n\n"
+            "直接傳訊息即可與 AI 聊天 👋"
+        )
+
+    # ── /設定 ────────────────────────────────────────────────────────────────
+    if lower == "/設定" or lower == "/settings":
+        return format_settings_display(user_id)
+
+    if lower.startswith("/設定 語言 ") or lower.startswith("/settings language "):
+        parts = text.split(maxsplit=2)
+        if len(parts) >= 3:
+            return set_user_language(user_id, parts[2])
+        return "用法：/設定 語言 中文 / 英文"
+
+    # ── /記憶 ────────────────────────────────────────────────────────────────
+    if lower in ("/記憶", "/memory"):
+        return get_memory_status(user_id)
+
+    # ── /匯出 ────────────────────────────────────────────────────────────────
+    if lower in ("/匯出", "/export"):
+        return export_conversations(user_id, limit=100)
+
+    # ── /清除對話 ────────────────────────────────────────────────────────────
+    if lower in ("/清除對話", "/clear", "/清除"):
+        return clear_conversations(user_id)
+
+    return None  # 不是指令
 
 
 def _chunk_text(text: str, size: int) -> list[str]:

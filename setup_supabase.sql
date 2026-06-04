@@ -53,6 +53,18 @@ BEGIN
 END $$;
 
 -- ============================================================
+-- 用戶設定表（v2：/設定 指令使用）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id    TEXT        PRIMARY KEY,
+    language   TEXT        NOT NULL DEFAULT 'zh-tw',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+-- 後端使用 service_role key，不需額外 policy
+
+-- ============================================================
 -- 完成！接著到 Supabase → Storage 建立 bucket：
 --   名稱：images
 --   Public：✅ 開啟
