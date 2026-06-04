@@ -23,14 +23,15 @@ from linebot.v3.messaging import (
     ImageMessage,
 )
 from app.config import LINE_CHANNEL_ACCESS_TOKEN
-from app.gemini_agent import process_text, process_image, process_pdf
+from app.gemini_agent import process_text, process_image, process_pdf, process_excel
 from app.rate_limiter import is_rate_limited
 
 logger = logging.getLogger(__name__)
 
 _line_config = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 
-MAX_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_PDF_SIZE   = 10 * 1024 * 1024  # 10 MB
+MAX_EXCEL_SIZE =  5 * 1024 * 1024  #  5 MB
 
 
 def _send_reply(reply_token: str, messages: list) -> None:
@@ -82,6 +83,7 @@ async def _dispatch(event) -> None:
                     "🔍 搜尋網路取得最新資訊\n"
                     "🧠 記住你說的重要事情\n"
                     "🖼 分析圖片和 PDF\n"
+                    "📊 分析 Excel / CSV 數據\n"
                     "🎨 幫你生成圖片\n\n"
                     "直接傳訊息就可以開始了！"
                 )
@@ -127,12 +129,13 @@ async def _dispatch(event) -> None:
         )
         _send_reply(reply_token, [TextMessage(text=reply_text[:4500])])
 
-    # ── 檔案訊息（PDF）──────────────────────────────────────────────────────
+    # ── 檔案訊息（PDF / Excel / CSV）────────────────────────────────────────
     elif isinstance(msg, FileMessageContent):
-        filename = msg.file_name
-        if filename.lower().endswith(".pdf"):
+        filename   = msg.file_name
+        fname_low  = filename.lower()
+
+        if fname_low.endswith(".pdf"):
             file_bytes = await loop.run_in_executor(None, _download_content, msg.id)
-            # 檔案大小限制
             if len(file_bytes) > MAX_PDF_SIZE:
                 _send_reply(reply_token, [TextMessage(
                     text="PDF 檔案過大，請上傳 10MB 以內的檔案。"
@@ -141,13 +144,34 @@ async def _dispatch(event) -> None:
             reply_text = await loop.run_in_executor(
                 None, process_pdf, user_id, file_bytes, filename
             )
+
+        elif fname_low.endswith((".xlsx", ".xls", ".csv")):
+            file_bytes = await loop.run_in_executor(None, _download_content, msg.id)
+            if len(file_bytes) > MAX_EXCEL_SIZE:
+                _send_reply(reply_token, [TextMessage(
+                    text="檔案過大，請上傳 5MB 以內的 Excel / CSV 檔案。"
+                )])
+                return
+            # 先告知用戶分析中（檔案大時可能需要幾秒）
+            reply_text = await loop.run_in_executor(
+                None, process_excel, user_id, file_bytes, filename
+            )
+
         else:
             ext = filename.rsplit(".", 1)[-1].upper() if "." in filename else "?"
-            reply_text = f"目前只支援 PDF 文件，不支援 {ext} 格式。"
-        _send_reply(reply_token, [TextMessage(text=reply_text[:4500])])
+            reply_text = (
+                f"目前支援的格式：PDF、Excel（.xlsx/.xls）、CSV。\n"
+                f"不支援 .{ext} 格式。"
+            )
+
+        # 長回覆分段傳送
+        chunks = _chunk_text(reply_text, 4500)
+        _send_reply(reply_token, [TextMessage(text=chunks[0])])
 
     else:
-        _send_reply(reply_token, [TextMessage(text="目前支援文字、圖片和 PDF。")])
+        _send_reply(reply_token, [TextMessage(
+            text="目前支援：文字、圖片、PDF、Excel（.xlsx/.xls）、CSV。"
+        )])
 
 
 def _chunk_text(text: str, size: int) -> list[str]:

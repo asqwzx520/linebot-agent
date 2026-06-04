@@ -43,6 +43,7 @@ SYSTEM_PROMPT = """你是一個智慧、友善的個人 AI 助理，透過 LINE 
 2. 搜尋網路取得最新資訊（天氣、新聞、股票等）
 3. 儲存與回憶長期記憶（每位用戶的記憶完全分開）
 4. 生成圖片
+5. 分析 Excel / CSV 數據（用戶上傳後自動解析並提供洞察）
 
 【工具使用時機】
 - 問到時事/最新資料 → web_search
@@ -255,6 +256,54 @@ def process_image(user_id: str, image_bytes: bytes, caption: str = "") -> str:
                 break
 
     return "圖片分析暫時無法使用，請稍後再試。"
+
+
+def process_excel(user_id: str, file_bytes: bytes, filename: str = "檔案") -> str:
+    """處理 Excel / CSV 文件，分析數據後送給 Gemini 提供洞察。"""
+    try:
+        from app.data_analyzer import analyze_file
+        summary, row_count, col_count = analyze_file(file_bytes, filename)
+    except ValueError as e:
+        return str(e)
+    except Exception as e:
+        return f"檔案解析失敗，請確認格式是否正確：{e}"
+
+    prompt = (
+        f"用戶上傳了一份資料檔案，以下是自動解析的摘要。\n"
+        f"請用繁體中文：\n"
+        f"1. 說明這份資料的內容與結構\n"
+        f"2. 指出 2-3 個有趣或值得注意的數據洞察\n"
+        f"3. 建議 2-3 個後續可以進一步分析的方向\n"
+        f"4. 如果發現資料品質問題（空值多、異常值等），也請提醒\n\n"
+        f"---\n{summary[:6000]}"
+    )
+
+    for api_key in GEMINI_API_KEYS:
+        for model_name in MODEL_CHAIN:
+            try:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(
+                    model_name=model_name,
+                    system_instruction=SYSTEM_PROMPT,
+                )
+                response = model.generate_content(prompt)
+                reply = response.text
+
+                # 儲存對話（讓後續追問時 Gemini 有上下文）
+                save_conversation(
+                    user_id, "user",
+                    f"[資料檔案：{filename}，{row_count:,} 筆 × {col_count} 欄]"
+                )
+                save_conversation(user_id, "assistant", reply)
+                return reply
+
+            except (ResourceExhausted, ServiceUnavailable):
+                time.sleep(0.3)
+                continue
+            except Exception:
+                break
+
+    return "資料分析暫時無法使用，所有模型額度已用完，請稍後再試。"
 
 
 def process_pdf(user_id: str, pdf_bytes: bytes, filename: str = "文件") -> str:
